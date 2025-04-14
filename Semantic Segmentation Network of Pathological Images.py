@@ -11,11 +11,11 @@ class DoubleConv(nn.Module):
     def __init__(self, in_channels, out_channels):
         super().__init__()
         self.conv = nn.Sequential(
-            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),  # 3*3卷积
-            nn.BatchNorm2d(out_channels),  # 批归一化
+            nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),  
+            nn.BatchNorm2d(out_channels), 
             nn.ReLU(inplace=True),
             nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
-            nn.GroupNorm(16, out_channels),  # 组数为 16
+            nn.GroupNorm(16, out_channels),  
             nn.ReLU(inplace=True)
         )
 
@@ -34,7 +34,6 @@ class DownSample(nn.Module):
             nn.MaxPool2d(2)
         )
 
-    # x (batch_size, channels, height, width)
     def forward(self,x):
         return self.down(x)
 
@@ -57,7 +56,7 @@ class MultiScaleFusion(nn.Module):
         x3 = self.dilated_conv3(x)
         x_global = self.global_avg_pool(x)
         # 扩展到与 x 相同的尺寸
-        x_global = x_global.expend(x.size())
+        x_global = x_global.expand(x.size())
         fused = torch.cat((x1, x2, x3, x_global), dim=1)
         return self.fuse(fused)
 
@@ -72,7 +71,7 @@ class PositionAttention(nn.Module):
         self.query = nn.Conv2d(in_channels, in_channels//8, kernel_size=1)
         self.key = nn.Conv2d(in_channels, in_channels//8, kernel_size=1)
         self.value = nn.Conv2d(in_channels, in_channels//8, kernel_size=1)
-        self.softmax = nn.Softmax(dim=-1)  # -1表示最后一个维度
+        self.softmax = nn.Softmax(dim=-1)  
 
     def forward(self,x):
         batch_size,channels,height,width = x.size()
@@ -81,7 +80,6 @@ class PositionAttention(nn.Module):
         value = self.value(x).view(batch_size, -1, height * width)  # (batch_size, in_channels, height * width)
         # 计算关联强度矩阵
         # input（p,m,n) * mat2(p,n,a) ->output(p,m,a)
-        # bmm 前一个矩阵的列 = 后一个矩阵的行才可以相乘
         attention = self.softmax(torch.bmm(query,key)) # (batch_size, height * width, height * width)
         # 加权融合
         out = torch.bmm(value, attention) # (B, C, H*W)
