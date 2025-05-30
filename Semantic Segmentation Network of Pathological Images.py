@@ -176,28 +176,28 @@ class FinalNetwork(nn.Module):
         # 输出层
         self.final_conv = nn.Conv2d(32, 1, kernel_size=1)
 
-        def forward(self, x):
-            # 下采样
+    def forward(self, x):
+        # 下采样
 
-            x1 = self.down1(x)
-            x2 = self.down2(x1)
-            x3 = self.down3(x2)
-            x4 = self.down4(x3)
+        x1 = self.down1(x)
+        x2 = self.down2(x1)
+        x3 = self.down3(x2)
+        x4 = self.down4(x3)
 
-            # 注意力模块
-            x_attention = self.attention(x4)
-            # 多尺度特征提取与融合
-            x_fused = self.fusion(x_attention)
+        # 注意力模块
+        x_attention = self.attention(x4)
+        # 多尺度特征提取与融合
+        x_fused = self.fusion(x_attention)
 
-            # 上采样
-            x_up1 = self.up1(x_fused,x3)
-            x_up2 = self.up2(x_up1,x2)
-            x_up3 = self.up3(x_up2,x1)
-            x_up4 = self.up4(x_up3,x)
+        # 上采样
+        x_up1 = self.up1(x_fused,x3)
+        x_up2 = self.up2(x_up1,x2)
+        x_up3 = self.up3(x_up2,x1)
+        x_up4 = self.up4(x_up3,x)
 
-            # 输出
-            output = self.final_conv(x_up4)
-            return output
+        # 输出
+        output = self.final_conv(x_up4)
+        return output
 
 
 # 测试网络
