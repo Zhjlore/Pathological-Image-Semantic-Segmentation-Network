@@ -74,8 +74,8 @@ class ChannelAttention(nn.Module):
         self.query = nn.Conv2d(in_channels, in_channels // 8, kernel_size=1)
         self.key = nn.Conv2d(in_channels, in_channels // 8, kernel_size=1)
         self.value = nn.Conv2d(in_channels, in_channels // 8, kernel_size=1)
-        self.out_conv = nn.Conv2d(in_channels // 8, in_channels, kernel_size=1)
         self.softmax = nn.Softmax(dim=-1)
+        self.conv_out = nn.Conv2d(in_channels // 8, in_channels, kernel_size=1)
 
     def forward(self, x):
         batch_size, channels, height, width = x.size()
@@ -83,10 +83,11 @@ class ChannelAttention(nn.Module):
         proj_key = self.key(x).view(batch_size, -1, height * width).permute(0, 2, 1)
         energy = torch.bmm(proj_query, proj_key)
         attention = self.softmax(energy)
+
         proj_value = self.value(x).view(batch_size, -1, height * width)
         out = torch.bmm(attention, proj_value)
         out = out.view(batch_size, -1, height, width)
-        out = self.out_conv(out)
+        out = self.conv_out(out)
         return out
 
 
@@ -103,10 +104,10 @@ class AttentionModule(nn.Module):
 
 
 class UpSample(nn.Module):
-    def __init__(self, x1_channels, x2_channels, out_channels):
+    def __init__(self, up_channels, skip_channels, out_channels):
         super().__init__()
-        self.up = nn.ConvTranspose2d(x1_channels, out_channels, kernel_size=2, stride=2)
-        self.conv_layer = DoubleConv(out_channels + x2_channels, out_channels)
+        self.up = nn.ConvTranspose2d(up_channels, out_channels, kernel_size=2, stride=2)
+        self.conv_layer = DoubleConv(skip_channels + out_channels, out_channels)
 
     def forward(self, x1, x2):
         x1 = self.up(x1)
@@ -121,26 +122,27 @@ class UpSample(nn.Module):
 class FinalNetwork(nn.Module):
     def __init__(self):
         super().__init__()
-        self.down1 = DownSample(3, 64)
-        self.down2 = DownSample(64, 128)
-        self.down3 = DownSample(128, 256)
-        self.down4 = DownSample(256, 512)
+        self.down1 = DownSample(3, 64)      # output channels: 64
+        self.down2 = DownSample(64, 128)    # 128
+        self.down3 = DownSample(128, 256)   # 256
+        self.down4 = DownSample(256, 512)   # 512
 
         self.attention = AttentionModule(512)
         self.fusion = MultiScaleFusion(512)
 
-        self.up1 = UpSample(512, 256, 256)
-        self.up2 = UpSample(256, 128, 128)
-        self.up3 = UpSample(128, 64, 64)
-        self.up4 = UpSample(64, 64, 32)
+        self.up1 = UpSample(up_channels=512, skip_channels=256, out_channels=256)
+        self.up2 = UpSample(up_channels=256, skip_channels=128, out_channels=128)
+        self.up3 = UpSample(up_channels=128, skip_channels=64, out_channels=64)
+        self.up4 = UpSample(up_channels=64, skip_channels=3, out_channels=32)  # 跳跃连接回输入3通道
+        self.up5 = UpSample(up_channels=32, skip_channels=3, out_channels=16)  # 同上，继续上采样
 
-        self.final_conv = nn.Conv2d(32, 1, kernel_size=1)
+        self.final_conv = nn.Conv2d(16, 1, kernel_size=1)
 
     def forward(self, x):
-        x1 = self.down1(x)
-        x2 = self.down2(x1)
-        x3 = self.down3(x2)
-        x4 = self.down4(x3)
+        x1 = self.down1(x)   # 64 channels
+        x2 = self.down2(x1)  # 128 channels
+        x3 = self.down3(x2)  # 256 channels
+        x4 = self.down4(x3)  # 512 channels
 
         x_attention = self.attention(x4)
         x_fused = self.fusion(x_attention)
@@ -148,13 +150,13 @@ class FinalNetwork(nn.Module):
         x_up1 = self.up1(x_fused, x3)
         x_up2 = self.up2(x_up1, x2)
         x_up3 = self.up3(x_up2, x1)
-        x_up4 = self.up4(x_up3, x1)  
+        x_up4 = self.up4(x_up3, x)   # 3 channels skip connection
+        x_up5 = self.up5(x_up4, x)   # 3 channels skip connection
 
-        output = self.final_conv(x_up4)
+        output = self.final_conv(x_up5)
         return output
 
 
-# 测试网络结构
 if __name__ == "__main__":
     model = FinalNetwork()
     input_tensor = torch.randn(1, 3, 512, 512)
